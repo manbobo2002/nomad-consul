@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  command: systemctl daemon-reload
+
+- name: restart nomad
+  service:
+    name: nomad
+    state: restarted
+    enabled: true

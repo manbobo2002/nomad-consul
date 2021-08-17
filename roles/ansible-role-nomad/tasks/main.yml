@@ -1,0 +1,157 @@
+---
+- name: install dependencies
+  apt:
+    name: [ "unzip" ]
+    state: present
+    cache_valid_time: 3600
+
+- name: download tarball {{ nomad_version }}
+  get_url:
+    url: "{{ nomad_dl_url }}"
+    dest: "{{ nomad_tarball_dest }}"
+  register: nomad_tar_download
+  when: ansible_architecture == "x86_64"
+
+- name: create nomad directory
+  file:
+    path: "{{ nomad_tarball_uncompress_dir }}"
+    state: directory
+  when: ansible_architecture == "x86_64"
+
+- name: does uncompressed tarball exist
+  stat:
+    path: "{{ nomad_tarball_uncompressed_fullpath }}"
+  register: uncompressed_tarball
+  when: ansible_architecture == "x86_64"
+
+- name: unpack tarball {{ nomad_version }}
+  unarchive:
+    src: "{{ nomad_tarball_dest }}"
+    remote_src: yes
+    dest: "{{ nomad_tarball_uncompress_dir }}"
+  when: nomad_tar_download.changed or uncompressed_tarball.stat.exists == false
+  register: nomad_tar_unpack
+  when: ansible_architecture == "x86_64"
+
+- name: does bin symlink1 exist
+  stat:
+    path: /usr/local/bin/nomad
+  register: bin_syml1
+  when: ansible_architecture == "x86_64"
+
+- name: symlink binary1 from /usr/local/bin to /opt
+  file:
+    src: "{{ nomad_tarball_uncompressed_fullpath }}"
+    dest: "/usr/local/bin/nomad"
+    state: link
+  when: nomad_tar_download.changed or nomad_tar_unpack.changed or bin_syml1.stat.exists == false
+  when: ansible_architecture == "x86_64"
+
+- name: create nomad configuration directory
+  file:
+    path: /etc/nomad.d
+    state: directory
+
+- name: create nomad data directory
+  file:
+    path: /opt/nomad
+    state: directory
+
+- name: create nomad policy directory
+  file:
+    path: /opt/nomad/policies
+    state: directory
+
+- name: configure nomad
+  template:
+    src: nomad.hcl
+    dest: /etc/nomad.d/
+  notify:
+    - restart nomad
+
+- name: configure nomad systemd service
+  template:
+    src: nomad.service
+    dest: /etc/systemd/system/
+    owner: root
+    mode: 0700
+  notify:
+    - reload systemd
+
+- name: nomad example
+  template:
+    src: countdash.nomad
+    dest: /opt/nomad/
+    owner: root
+    mode: 0700
+
+- name: download tarball {{ cni_version }}
+  get_url:
+    url: "{{ cni_dl_url }}"
+    dest: "{{ cni_tarball_dest }}"
+  register: cni_tar_download
+
+- name: create nomad configuration directory
+  file:
+    path: "{{ cni_tarball_uncompress_dir }}"
+    state: directory
+
+- name: does uncompressed tarball exist
+  stat:
+    path: "{{ cni_tarball_uncompressed_fullpath }}"
+  register: uncompressed_tarball
+
+- name: unpack tarball {{ cni_version }}
+  unarchive:
+    src: "{{ cni_tarball_dest }}"
+    remote_src: yes
+    dest: "{{ cni_tarball_uncompress_dir }}"
+  when: cni_tar_download.changed or uncompressed_tarball.stat.exists == false
+  register: cni_tar_unpack
+
+- name: load br_netfilter kernel module
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: add br_netfilter to /etc/modules
+  lineinfile:
+    path: /etc/modules
+    regexp: '^br_netfilter'
+    line: br_netfilter
+
+- name: set bridge bridge-nf-call-arptables settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-arptables
+    value: 1
+    sysctl_file: /etc/sysctl.conf
+    sysctl_set: yes
+    reload: yes
+    state: present
+
+- name: set bridge bridge-nf-call-ip6tables settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-ip6tables
+    value: 1
+    sysctl_file: /etc/sysctl.conf
+    sysctl_set: yes
+    reload: yes
+    state: present
+
+- name: set bridge bridge-nf-call-iptables settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    sysctl_file: /etc/sysctl.conf
+    sysctl_set: yes
+    reload: yes
+    state: present
+  notify:
+    - reload systemd
+
+- name: apply nomad jobs
+  command: /usr/local/bin/nomad job run --detach countdash.nomad
+  become: yes
+  args:
+    chdir: /opt/nomad
+  ignore_errors: True

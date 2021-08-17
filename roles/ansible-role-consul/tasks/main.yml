@@ -1,0 +1,75 @@
+---
+- name: import APT signing key
+  apt_key:
+    url: https://apt.releases.hashicorp.com/gpg
+    state: present
+  when: ansible_architecture == "x86_64"
+
+- name: add repository ({{ ansible_distribution_release }})
+  apt_repository:
+    repo: deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main
+    state: present
+    filename: consul
+    update_cache: yes
+  when: ansible_architecture == "x86_64"
+
+- name: add repository ({{ ansible_distribution_release }})
+  apt_repository:
+    repo: deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main
+    state: present
+    filename: consul
+    update_cache: yes
+  when: ansible_architecture == "x86_64"
+
+- name: install package
+  apt:
+    name: "consul={{ consul_version }}"
+    state: present
+    update_cache: yes 
+    cache_valid_time: 3600
+  when: ansible_architecture == "x86_64"
+
+- name: set cap_net_bind_service=+ep on /usr/bin/consul
+  capabilities:
+    path: /usr/bin/consul
+    capability: cap_net_bind_service=+ep
+    state: present
+  when: ansible_architecture == "x86_64"
+  ignore_errors: True
+
+- name: install service
+  template:
+    src: consul.service
+    dest: /etc/systemd/system/
+  notify:
+  - reload systemd
+
+- name: Add service user
+  user:
+    name: consul
+    group: consul
+
+- name: create consul data directory
+  file:
+    path: /opt/consul
+    state: directory
+    owner: consul
+    group: consul
+
+- name: create consul configuration directory
+  file:
+    path: /etc/consul.d
+    state: directory
+    owner: consul
+    group: consul
+
+- name: configure consul
+  template:
+    src: "{{ item }}"
+    dest: /etc/consul.d/
+    owner: consul
+    group: consul
+  notify:
+  - restart consul
+  with_items:
+    - consul.hcl

@@ -1,0 +1,11 @@
+---
+- hosts: nomad-test
+  vars_files:
+    - secrets.yml
+  become: yes
+  gather_facts: true
+  roles:
+    - { role: ansible-role-server-update, tags: ["update"] }
+    - { role: ansible-role-docker, tags: ["docker"] }
+    - { role: ansible-role-consul, tags: [ 'consul' ] }
+    - { role: ansible-role-nomad, tags: [ 'nomad' ] }

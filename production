@@ -1,0 +1,4 @@
+# file: production
+
+[nomad-test]
+34.125.145.120 ansible_user=xxx
